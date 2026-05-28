@@ -1,0 +1,57 @@
+{
+  "GeneratedAt": "2026-05-28T23:09:06.0000000Z",
+  "ProjectPath": ".",
+  "Summary": {
+    "TotalFindings": 4,
+    "CveCount": 1,
+    "CweCount": 3,
+    "BySeverity": { "mandatory": 1, "optional": 2, "potential": 1 },
+    "ByCategory": { "CVE": 1, "Credentials & Secrets": 3 },
+    "TotalRulesAssessed": 59,
+    "RulesPassed": 56
+  },
+  "CveFindings": [
+    {
+      "Id": "CVE-2025-59250",
+      "Name": "JDBC Driver for SQL Server has improper input validation issue",
+      "Category": "CVE",
+      "Severity": "mandatory",
+      "StoryPoint": 1,
+      "Description": "Improper input validation in JDBC Driver for SQL Server allows an unauthorized attacker to perform spoofing over a network.",
+      "Files": ["build.gradle:13"],
+      "Explanation": "[CVE-2025-59250](https://github.com/advisories/GHSA-m494-w24q-6f7w): JDBC Driver for SQL Server has improper input validation issue\n\nSeverity: HIGH (CVSS 8.1)\n\nImproper input validation in JDBC Driver for SQL Server allows an unauthorized attacker to perform spoofing over a network.\n\nAffected dependencies:\n  - com.microsoft.sqlserver:mssql-jdbc:12.6.1.jre8 (declared at build.gradle:13)\n\nRecommended fix:\n  - Upgrade com.microsoft.sqlserver:mssql-jdbc to 12.6.5.jre8 or later"
+    }
+  ],
+  "CweFindings": [
+    {
+      "Id": "CWE-259",
+      "Name": "Use of Hard-coded Password",
+      "Category": "Credentials & Secrets",
+      "Severity": "optional",
+      "StoryPoint": 5,
+      "Description": "The product contains a hard-coded password, which it uses for its own inbound authentication or for outbound communication to external components.",
+      "Files": ["src/main/resources/fileingestion.properties"],
+      "Explanation": "Hard-coded passwords are present in the bundled properties file. The SQL Server SA password 'YourStrong!Passw0rd' is set at 'db.password', and the RabbitMQ password 'guest' is set at 'rabbitmq.password'. These credentials are committed into the repository and bundled into the application artifact, making them visible to anyone with access to the source code or the built JAR."
+    },
+    {
+      "Id": "CWE-778",
+      "Name": "Insufficient Logging",
+      "Category": "Credentials & Secrets",
+      "Severity": "potential",
+      "StoryPoint": 3,
+      "Description": "When a security-critical event occurs, the product either does not record the event or omits important details about the event when logging it.",
+      "Files": ["src/main/java/com/zavabank/fileingestion/Main.java"],
+      "Explanation": "In the Main class, security-critical failures are logged with minimal context. The executeInsert() method (line 225) logs only 'Insert failed: ' + exception message without identifying which file or operation failed. The publishIngestionEvent() method (line 268) logs only 'RabbitMQ publish failed: ' + message without including the file name or file type. For a financial application processing wire confirmations, check images, and regulatory feeds, there is no structured security audit logging, no recording of authentication failures, and no traceability between failed database events and the source files being processed."
+    },
+    {
+      "Id": "CWE-798",
+      "Name": "Use of Hard-coded Credentials",
+      "Category": "Credentials & Secrets",
+      "Severity": "optional",
+      "StoryPoint": 5,
+      "Description": "The product contains hard-coded credentials, such as a password or cryptographic key.",
+      "Files": ["src/main/resources/fileingestion.properties"],
+      "Explanation": "Hard-coded credentials are present in the bundled properties file committed to source control. The SQL Server SA account credentials are hard-coded (db.username=sa, db.****** and RabbitMQ credentials are hard-coded (rabbitmq.username=guest, rabbitmq.****** These values are loaded at runtime via Main.loadConfig() and applied as defaults even when environment variable overrides are not provided, meaning the application may silently connect with these insecure hard-coded credentials in environments where environment variables are not set."
+    }
+  ]
+}
