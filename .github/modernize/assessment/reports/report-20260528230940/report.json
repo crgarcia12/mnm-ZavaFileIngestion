@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "id": "20260528230940",
+    "generatedAt": "2026-05-28T23:09:40.0000000Z",
+    "note": "Security-only report (AppCAT assessment tools were not available in this environment)"
+  },
+  "security": [
+    {
+      "id": "CVE-2025-59250",
+      "title": "JDBC Driver for SQL Server has improper input validation issue",
+      "category": "CVE",
+      "severity": "mandatory",
+      "description": "Improper input validation in JDBC Driver for SQL Server allows an unauthorized attacker to perform spoofing over a network.",
+      "evidence": {
+        "files": [
+          "build.gradle:13"
+        ],
+        "explanation": "[CVE-2025-59250](https://github.com/advisories/GHSA-m494-w24q-6f7w): JDBC Driver for SQL Server has improper input validation issue\n\nSeverity: HIGH (CVSS 8.1)\n\nImproper input validation in JDBC Driver for SQL Server allows an unauthorized attacker to perform spoofing over a network.\n\nAffected dependencies:\n  - com.microsoft.sqlserver:mssql-jdbc:12.6.1.jre8 (declared at build.gradle:13)\n\nRecommended fix:\n  - Upgrade com.microsoft.sqlserver:mssql-jdbc to 12.6.5.jre8 or later"
+      },
+      "storyPoint": 1
+    },
+    {
+      "id": "CWE-259",
+      "title": "Use of Hard-coded Password",
+      "category": "Credentials & Secrets",
+      "severity": "optional",
+      "description": "The product contains a hard-coded password, which it uses for its own inbound authentication or for outbound communication to external components.",
+      "evidence": {
+        "files": [
+          "src/main/resources/fileingestion.properties"
+        ],
+        "explanation": "Hard-coded passwords are present in the bundled properties file. The SQL Server SA password is set at db.password, and the RabbitMQ password 'guest' is set at rabbitmq.password. These credentials are committed into the repository and bundled into the application artifact, making them visible to anyone with access to the source code or the built JAR."
+      },
+      "storyPoint": 5
+    },
+    {
+      "id": "CWE-778",
+      "title": "Insufficient Logging",
+      "category": "Credentials & Secrets",
+      "severity": "potential",
+      "description": "When a security-critical event occurs, the product either does not record the event or omits important details about the event when logging it.",
+      "evidence": {
+        "files": [
+          "src/main/java/com/zavabank/fileingestion/Main.java"
+        ],
+        "explanation": "In the Main class, security-critical failures are logged with minimal context. The executeInsert() method (line 225) logs only 'Insert failed: ' + exception message without identifying which file or operation failed. The publishIngestionEvent() method (line 268) logs only 'RabbitMQ publish failed: ' + message without including the file name or file type."
+      },
+      "storyPoint": 3
+    },
+    {
+      "id": "CWE-798",
+      "title": "Use of Hard-coded Credentials",
+      "category": "Credentials & Secrets",
+      "severity": "optional",
+      "description": "The product contains hard-coded credentials, such as a password or cryptographic key.",
+      "evidence": {
+        "files": [
+          "src/main/resources/fileingestion.properties"
+        ],
+        "explanation": "Hard-coded credentials are present in the bundled properties file committed to source control. The SQL Server SA account credentials are hard-coded (db.username=sa, db.password) and RabbitMQ credentials are hard-coded (rabbitmq.username=guest, rabbitmq.****** These values are loaded at runtime via Main.loadConfig() and applied as defaults even when environment variable overrides are not provided."
+      },
+      "storyPoint": 5
+    }
+  ],
+  "rules": {},
+  "projects": [
+    {
+      "properties": {
+        "repo": "mnm-ZavaFileIngestion",
+        "appName": "ZavaFileIngestion",
+        "languages": [
+          "Java"
+        ],
+        "frameworks": [
+          "Java SE"
+        ],
+        "tools": [
+          "Gradle"
+        ]
+      },
+      "incidents": []
+    }
+  ],
+  "rearchitect": []
+}
