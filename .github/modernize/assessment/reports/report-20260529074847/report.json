@@ -1,0 +1,60 @@
+{
+  "metadata": {
+    "id": "20260529074847",
+    "analysisStartTime": "2026-05-29T07:48:47.0000000Z",
+    "analysisCoverage": "full",
+    "tool": "AppCAT"
+  },
+  "rules": {},
+  "projects": [
+    {
+      "name": "ZavaFileIngestion",
+      "properties": {
+        "repo": "mnm-ZavaFileIngestion",
+        "appName": "ZavaFileIngestion",
+        "languages": [
+          "Java"
+        ],
+        "frameworks": [
+          "Java SE"
+        ],
+        "tools": [
+          "Gradle"
+        ]
+      },
+      "incidents": []
+    }
+  ],
+  "security": [
+    {
+      "id": "CWE-259",
+      "title": "Use of Hard-coded Password",
+      "category": "Credentials & Secrets",
+      "severity": "optional",
+      "description": "The product contains a hard-coded password, which it uses for its own inbound authentication or for outbound communication to external components.",
+      "evidence": {
+        "files": [
+          "src/main/resources/fileingestion.properties:4",
+          "src/main/resources/fileingestion.properties:11"
+        ],
+        "explanation": "Hard-coded credentials were detected in `src/main/resources/fileingestion.properties` for both RabbitMQ and SQL Server connection settings. The file includes static password values (`rabbitmq.password` and `db.password`) checked into source control."
+      },
+      "storyPoint": 5
+    },
+    {
+      "id": "CWE-798",
+      "title": "Use of Hard-coded Credentials",
+      "category": "Credentials & Secrets",
+      "severity": "optional",
+      "description": "The product contains hard-coded credentials, such as a password or cryptographic key.",
+      "evidence": {
+        "files": [
+          "src/main/resources/fileingestion.properties:4",
+          "src/main/resources/fileingestion.properties:11"
+        ],
+        "explanation": "Hard-coded credentials were detected in `src/main/resources/fileingestion.properties` for both RabbitMQ and SQL Server connection settings. The file includes static password values (`rabbitmq.password` and `db.password`) checked into source control."
+      },
+      "storyPoint": 5
+    }
+  ]
+}
