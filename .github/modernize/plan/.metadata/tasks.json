@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tasks template for modernization plan. Generate this file alongside plan.md to track individual migration tasks.",
+  "tasks": [
+    {
+      "type": "transform",
+      "id": "001-transform-rabbitmq-amqp-to-servicebus",
+      "description": "Migrate the file ingestion event publisher from RabbitMQ AMQP to Azure Service Bus.",
+      "reason": "The application currently uses RabbitMQ (com.rabbitmq:amqp-client) to publish file ingestion events. Migrating to Azure Service Bus eliminates the need to operate a self-hosted broker and provides a fully managed, cloud-native messaging service.",
+      "requirements": "Replace the RabbitMQ AMQP client dependency and all RabbitMQ connection/publishing code in Main.java (publishIngestionEvent method) with Azure Service Bus SDK. Migrate message publishing to Azure Service Bus topics or queues. Use Managed Identity for authentication to Azure Service Bus. Remove RabbitMQ configuration properties (rabbitmq.host, rabbitmq.port, rabbitmq.username, rabbitmq.password, rabbitmq.vhost, rabbitmq.events.exchange, rabbitmq.ingestion.routingKey) and replace with Azure Service Bus connection configuration.",
+      "skills": [
+        {
+          "name": "migration-amqp-rabbitmq-servicebus",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "002-transform-sql-server-to-azure-sql-mi",
+      "description": "Migrate the SQL Server database connection from password-based authentication to Azure Managed Identity.",
+      "reason": "The application currently uses hardcoded username/password credentials (db.username, db.password) to connect to SQL Server via JDBC. Migrating to Azure Managed Identity eliminates plaintext credentials and enforces secure, auditable database access.",
+      "requirements": "Replace password-based JDBC authentication in the executeInsert method with Azure Managed Identity (passwordless) authentication for Azure SQL Database. Remove db.username and db.password configuration properties. Update the mssql-jdbc dependency and connection configuration to support Azure Active Directory Managed Identity authentication. The three staging tables (StagingCheckImage, StagingWireConfirmation, StagingRegulatoryFeed) and their INSERT statements must remain functionally equivalent.",
+      "dependencies": ["001-transform-rabbitmq-amqp-to-servicebus"],
+      "skills": [
+        {
+          "name": "migration-mi-azure-sql",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "003-transform-local-files-to-azure-storage",
+      "description": "Migrate the local file ingestion watch path to an Azure-mounted storage path.",
+      "reason": "The application currently polls a local shared directory (/shared/file-ingestion) for incoming files. Moving to Azure-mounted storage provides durable, scalable file drop capability without managing local persistent volumes.",
+      "requirements": "Update the file ingestion watch path, processed path, and error path to use Azure mounted storage paths starting with ${AZURE_MOUNT_PATH:/mnt/azure}. Update configuration properties (ingestion.watch.path, ingestion.processed.path, ingestion.error.path) and their environment variable overrides (FILE_INGESTION_PATH, FILE_INGESTION_PROCESSED_PATH, FILE_INGESTION_ERROR_PATH) to use the Azure mount path prefix. All file operations (listFiles, move, createDirectories) must continue to work correctly against the mounted Azure Storage path.",
+      "dependencies": ["002-transform-sql-server-to-azure-sql-mi"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "security",
+      "id": "004-security-cve-remediation",
+      "description": "Scan all Gradle dependencies for known CVEs and remediate identified vulnerabilities.",
+      "reason": "Before deploying to Azure, all known security vulnerabilities in project dependencies must be identified and resolved to ensure the application is secure.",
+      "requirements": "Upgrade vulnerable dependencies to the minimum patched version. If a CVE fix requires a major version upgrade, document the affected dependency, the current version, the upgraded major version, and the breaking change risk. Verify that the project builds and all tests pass after remediation.",
+      "dependencies": ["003-transform-local-files-to-azure-storage"],
+      "skills": [
+        {
+          "name": "validate-cves-and-fix",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "deployment",
+      "id": "005-deployment-azure-container-apps",
+      "description": "Containerize and deploy the ZavaFileIngestion service to Azure Container Apps.",
+      "reason": "The application needs to be packaged as a container and deployed to Azure Container Apps to run as a managed, scalable cloud service. The existing Dockerfile will be used as the basis for the container image.",
+      "requirements": "Build the container image using the existing Dockerfile (FROM gradle:7.6-jdk8 build stage, eclipse-temurin:8-jre runtime). Push the image to Azure Container Registry. Deploy to Azure Container Apps. Configure the Azure mount path for the file ingestion storage (AZURE_MOUNT_PATH environment variable pointing to the Azure Files mount). Create a new Azure Container Apps resource if one does not already exist.",
+      "dependencies": ["004-security-cve-remediation"],
+      "targetAzureService": "Azure Container Apps",
+      "resourceStatus": "Create new resource",
+      "deploymentTool": "bicep",
+      "skills": [
+        {
+          "name": "azcli-containerapp-deploy",
+          "location": "builtin"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "planName": "plan",
+    "projectName": "ZavaFileIngestion",
+    "language": "java",
+    "createdAt": "2026-05-29T09:50:15.634+02:00",
+    "version": "1.0"
+  }
+}
