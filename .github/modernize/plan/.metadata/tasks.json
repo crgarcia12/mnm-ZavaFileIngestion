@@ -76,6 +76,14 @@
     {
       "type": "security",
       "id": "004-security-cve-remediation",
+      "status": "success",
+      "taskSummary": "Scanned 62 dependencies. Found 23 CVEs in Netty, mssql-jdbc, and msal4j. Fixed by upgrading mssql-jdbc to 12.8.2.jre8 and forcing Netty 4.1.133.Final and msal4j 1.15.1 via Gradle resolutionStrategy. Build passes.",
+      "successCriteriaStatus": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      },
+      "cveReport": ".github/modernize/plan/004-security-cve-remediation/final-cve-report.json",
       "description": "Scan all Gradle dependencies for known CVEs and remediate identified vulnerabilities.",
       "reason": "Before deploying to Azure, all known security vulnerabilities in project dependencies must be identified and resolved to ensure the application is secure.",
       "requirements": "Upgrade vulnerable dependencies to the minimum patched version. If a CVE fix requires a major version upgrade, document the affected dependency, the current version, the upgraded major version, and the breaking change risk. Verify that the project builds and all tests pass after remediation.",
@@ -95,6 +103,7 @@
     {
       "type": "deployment",
       "id": "005-deployment-azure-container-apps",
+      "status": "started",
       "description": "Containerize and deploy the ZavaFileIngestion service to Azure Container Apps.",
       "reason": "The application needs to be packaged as a container and deployed to Azure Container Apps to run as a managed, scalable cloud service. The existing Dockerfile will be used as the basis for the container image.",
       "requirements": "Build the container image using the existing Dockerfile (FROM gradle:7.6-jdk8 build stage, eclipse-temurin:8-jre runtime). Push the image to Azure Container Registry. Deploy to Azure Container Apps. Configure the Azure mount path for the file ingestion storage (AZURE_MOUNT_PATH environment variable pointing to the Azure Files mount). Create a new Azure Container Apps resource if one does not already exist.",
