@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tasks template for modernization plan. Generate this file alongside plan.md to track individual migration tasks.",
+  "tasks": [
+    {
+      "type": "upgrade",
+      "id": "001-upgrade-java-runtime",
+      "description": "Upgrade the application baseline to the latest supported Java/framework level for modernization readiness.",
+      "reason": "The project currently targets Java 8 and needs a modern baseline before cloud-native transformations.",
+      "requirements": "Upgrade project runtime/build compatibility from Java 8 to the latest supported Java baseline and align project configuration for modern framework compatibility while preserving current business behavior.",
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "002-transform-rabbitmq-to-servicebus",
+      "description": "Modernize messaging by migrating RabbitMQ-based integration to Azure Service Bus.",
+      "reason": "Cloud-native messaging on Azure is required for managed reliability and operational simplification.",
+      "requirements": "Migrate current RabbitMQ messaging usage to Azure Service Bus and align messaging configuration to Azure-native connectivity and authentication patterns.",
+      "dependencies": [
+        "001-upgrade-java-runtime"
+      ],
+      "skills": [
+        {
+          "name": "migration-amqp-rabbitmq-servicebus",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "003-transform-azure-sql-mi-auth",
+      "description": "Modernize Azure SQL connectivity by moving from password-based access to managed identity patterns.",
+      "reason": "Cloud-native security requires removing static credentials and adopting managed identity.",
+      "requirements": "Modernize SQL connectivity for Azure SQL Database using managed identity based authentication and remove dependency on hardcoded or secret-based database credentials.",
+      "dependencies": [
+        "001-upgrade-java-runtime"
+      ],
+      "skills": [
+        {
+          "name": "migration-mi-azure-sql",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "security",
+      "id": "004-security-cve-remediation",
+      "description": "Scan dependencies for known CVEs and remediate vulnerabilities before deployment.",
+      "reason": "Security validation and CVE remediation are mandatory in the modernization workflow.",
+      "requirements": "Scan all project dependencies for CVEs and remediate vulnerabilities to minimum patched versions. For major-version remediation, document upgrade risk and verify build/test outcomes after fixes.",
+      "dependencies": [
+        "001-upgrade-java-runtime",
+        "002-transform-rabbitmq-to-servicebus",
+        "003-transform-azure-sql-mi-auth"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "deployment",
+      "id": "005-deploy-azure-container-apps",
+      "description": "Deploy the modernized application to Azure Container Apps.",
+      "reason": "User requested Azure deployment with a cloud-native service target.",
+      "requirements": "Containerize and deploy the application to Azure Container Apps using Azure-native deployment flow, with runtime configuration aligned to migrated Azure messaging and database services.",
+      "dependencies": [
+        "004-security-cve-remediation"
+      ],
+      "skills": [
+        {
+          "name": "azcli-containerapp-deploy",
+          "location": "builtin"
+        }
+      ],
+      "targetAzureService": "Azure Container Apps",
+      "resourceStatus": "existing",
+      "deploymentTool": "bicep"
+    }
+  ],
+  "metadata": {
+    "planName": "plan",
+    "projectName": "ZavaFileIngestion",
+    "language": "java",
+    "createdAt": "2026-05-29T08:07:38Z",
+    "version": "1.0"
+  }
+}
