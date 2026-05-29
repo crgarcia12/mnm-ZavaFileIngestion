@@ -1,0 +1,66 @@
+{
+  "GeneratedAt": "2026-05-29T01:07:32.0000000Z",
+  "ProjectPath": ".",
+  "Summary": {
+    "TotalFindings": 3,
+    "CveCount": 0,
+    "CweCount": 3,
+    "BySeverity": {
+      "mandatory": 0,
+      "optional": 2,
+      "potential": 1
+    },
+    "ByCategory": {
+      "Credentials & Secrets": 3
+    },
+    "TotalRulesAssessed": 59,
+    "RulesPassed": 56
+  },
+  "CveFindings": [],
+  "CweFindings": [
+    {
+      "Id": "CWE-259",
+      "Name": "Use of Hard-coded Password",
+      "Category": "Credentials & Secrets",
+      "Severity": "optional",
+      "StoryPoint": 5,
+      "Description": "The product contains a hard-coded password, which it uses for its own inbound authentication or for outbound communication to external components.",
+      "Files": [
+        "src/main/resources/fileingestion.properties:4",
+        "src/main/resources/fileingestion.properties:11",
+        "src/main/java/com/zavabank/fileingestion/Main.java:252"
+      ],
+      "Explanation": "Hard-coded messaging and database passwords are present in fileingestion.properties (rabbitmq.password and db.password), and Main.publishIngestionEvent uses a built-in default password value via config.getProperty(..., \"guest\")."
+    },
+    {
+      "Id": "CWE-778",
+      "Name": "Insufficient Logging",
+      "Category": "Credentials & Secrets",
+      "Severity": "potential",
+      "StoryPoint": 3,
+      "Description": "When a security-critical event occurs, the product either does not record the event or omits important details about the event when logging it.",
+      "Files": [
+        "src/main/java/com/zavabank/fileingestion/Main.java:225",
+        "src/main/java/com/zavabank/fileingestion/Main.java:268"
+      ],
+      "Explanation": "Security-relevant failures (database insert and RabbitMQ publish errors) are logged only as generic message text without structured security context or event metadata, limiting auditability of credential- or auth-related failures."
+    },
+    {
+      "Id": "CWE-798",
+      "Name": "Use of Hard-coded Credentials",
+      "Category": "Credentials & Secrets",
+      "Severity": "optional",
+      "StoryPoint": 5,
+      "Description": "The product contains hard-coded credentials, such as a password or cryptographic key.",
+      "Files": [
+        "src/main/resources/fileingestion.properties:3",
+        "src/main/resources/fileingestion.properties:4",
+        "src/main/resources/fileingestion.properties:10",
+        "src/main/resources/fileingestion.properties:11",
+        "src/main/java/com/zavabank/fileingestion/Main.java:251",
+        "src/main/java/com/zavabank/fileingestion/Main.java:252"
+      ],
+      "Explanation": "Hard-coded credential values are present for RabbitMQ and SQL Server in configuration defaults and in code-level fallback values (guest username/password)."
+    }
+  ]
+}
