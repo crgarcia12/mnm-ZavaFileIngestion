@@ -1,0 +1,61 @@
+{
+  "metadata": {
+    "analysisStartTime": "2026-05-29T03:44:28Z",
+    "analysisEndTime": "2026-05-29T03:44:28Z",
+    "tool": "AppCAT",
+    "version": "best-effort"
+  },
+  "rules": {
+    "java8-runtime-modernization": {
+      "title": "Java runtime modernization required",
+      "description": "Application targets Java 8 runtime which may require modernization for target platforms.",
+      "severity": "potential",
+      "effort": 3,
+      "labels": ["domain=cloud-readiness"]
+    },
+    "plaintext-secrets-config": {
+      "title": "Plaintext credentials in configuration",
+      "description": "Configuration file contains default credentials and should be externalized to secret storage.",
+      "severity": "mandatory",
+      "effort": 2,
+      "labels": ["domain=cloud-readiness"]
+    }
+  },
+  "projects": [
+    {
+      "properties": {
+        "repo": "mnm-ZavaFileIngestion",
+        "appName": "ZavaFileIngestion",
+        "languages": ["Java"],
+        "frameworks": ["Java SE 8"],
+        "tools": ["Gradle"],
+        "jdkVersion": "1.8",
+        "applicationType": "Background Service"
+      },
+      "incidents": [
+        {
+          "ruleId": "java8-runtime-modernization",
+          "location": "build.gradle",
+          "line": 17,
+          "targets": {
+            "aks": {
+              "effort": 3
+            }
+          }
+        },
+        {
+          "ruleId": "plaintext-secrets-config",
+          "location": "src/main/resources/fileingestion.properties",
+          "line": 11,
+          "targets": {
+            "aks": {
+              "effort": 2
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "security": [],
+  "rearchitect": []
+}
