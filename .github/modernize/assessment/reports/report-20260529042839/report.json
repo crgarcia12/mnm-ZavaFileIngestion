@@ -1,0 +1,62 @@
+{
+  "metadata": {
+    "analysisStartTime": "2026-05-29T04:28:39Z",
+    "reportId": "20260529042839"
+  },
+  "rules": {},
+  "projects": [
+    {
+      "properties": {
+        "repo": "mnm-ZavaFileIngestion",
+        "languages": [
+          "Java"
+        ],
+        "frameworks": [
+          "JDBC",
+          "RabbitMQ Java Client"
+        ],
+        "tools": [
+          "Gradle"
+        ],
+        "jdkVersion": "8",
+        "applicationType": "File Ingestion Service"
+      },
+      "incidents": []
+    }
+  ],
+  "rearchitect": [],
+  "security": [
+    {
+      "id": "CWE-259",
+      "title": "Use of Hard-coded Password",
+      "category": "Credentials & Secrets",
+      "severity": "optional",
+      "description": "The product contains a hard-coded password, which it uses for its own inbound authentication or for outbound communication to external components.",
+      "evidence": {
+        "files": [
+          "src/main/resources/fileingestion.properties:4",
+          "src/main/resources/fileingestion.properties:11"
+        ],
+        "explanation": "Hard-coded passwords are present in runtime configuration: `rabbitmq.****** and `db.****** in fileingestion.properties."
+      },
+      "storyPoint": 5
+    },
+    {
+      "id": "CWE-798",
+      "title": "Use of Hard-coded Credentials",
+      "category": "Credentials & Secrets",
+      "severity": "optional",
+      "description": "The product contains hard-coded credentials, such as a password or cryptographic key.",
+      "evidence": {
+        "files": [
+          "src/main/resources/fileingestion.properties:3",
+          "src/main/resources/fileingestion.properties:4",
+          "src/main/resources/fileingestion.properties:10",
+          "src/main/resources/fileingestion.properties:11"
+        ],
+        "explanation": "The default configuration includes embedded credentials for RabbitMQ and SQL Server (`rabbitmq.username`, `rabbitmq.password`, `db.username`, `db.password`)."
+      },
+      "storyPoint": 5
+    }
+  ]
+}
