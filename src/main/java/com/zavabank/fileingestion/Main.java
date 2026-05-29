@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.Properties;
 
 public class Main {
+    private static final String DEFAULT_AZURE_MOUNT_PATH = "/mnt/azure";
+    private static final String DEFAULT_INGESTION_PATH = "file-ingestion";
     private static volatile boolean running = true;
     private static final Map<String, String> FILE_TYPE_HINTS = new HashMap<String, String>();
 
@@ -43,9 +45,9 @@ public class Main {
             }
         }));
 
-        String watchPath = config.getProperty("ingestion.watch.path", "/shared/file-ingestion");
-        String processedPath = config.getProperty("ingestion.processed.path", "/shared/file-ingestion/processed");
-        String errorPath = config.getProperty("ingestion.error.path", "/shared/file-ingestion/error");
+        String watchPath = config.getProperty("ingestion.watch.path", buildMountedPath(getAzureMountPath(), DEFAULT_INGESTION_PATH));
+        String processedPath = config.getProperty("ingestion.processed.path", buildMountedPath(getAzureMountPath(), DEFAULT_INGESTION_PATH + "/processed"));
+        String errorPath = config.getProperty("ingestion.error.path", buildMountedPath(getAzureMountPath(), DEFAULT_INGESTION_PATH + "/error"));
         long intervalMs = parseLong(config.getProperty("ingestion.poll.interval.ms", "5000"), 5000L);
 
         ensureDirectory(watchPath);
@@ -406,6 +408,7 @@ public class Main {
         applyEnvOverride(props, "FILE_INGESTION_PROCESSED_PATH", "ingestion.processed.path");
         applyEnvOverride(props, "FILE_INGESTION_ERROR_PATH", "ingestion.error.path");
         applyEnvOverride(props, "FILE_INGESTION_POLL_MS", "ingestion.poll.interval.ms");
+        normalizeIngestionPaths(props);
         return props;
     }
 
@@ -414,6 +417,43 @@ public class Main {
         if (value != null && value.trim().length() > 0) {
             props.setProperty(key, value);
         }
+    }
+
+    private static void normalizeIngestionPaths(Properties props) {
+        String azureMountPath = getAzureMountPath();
+        props.setProperty("ingestion.watch.path", resolveMountedPath(props.getProperty("ingestion.watch.path"), azureMountPath, DEFAULT_INGESTION_PATH));
+        props.setProperty("ingestion.processed.path", resolveMountedPath(props.getProperty("ingestion.processed.path"), azureMountPath, DEFAULT_INGESTION_PATH + "/processed"));
+        props.setProperty("ingestion.error.path", resolveMountedPath(props.getProperty("ingestion.error.path"), azureMountPath, DEFAULT_INGESTION_PATH + "/error"));
+    }
+
+    private static String resolveMountedPath(String configuredPath, String azureMountPath, String defaultRelativePath) {
+        String resolvedPath = resolveAzureMountPathPlaceholders(trimToEmpty(configuredPath), azureMountPath);
+        if (resolvedPath.length() == 0) {
+            return buildMountedPath(azureMountPath, defaultRelativePath);
+        }
+        Path path = Paths.get(resolvedPath);
+        if (!path.isAbsolute()) {
+            return buildMountedPath(azureMountPath, resolvedPath);
+        }
+        return path.normalize().toString();
+    }
+
+    private static String resolveAzureMountPathPlaceholders(String value, String azureMountPath) {
+        return value
+            .replace("${AZURE_MOUNT_PATH:/mnt/azure}", azureMountPath)
+            .replace("${AZURE_MOUNT_PATH}", azureMountPath);
+    }
+
+    private static String getAzureMountPath() {
+        String azureMountPath = trimToEmpty(System.getenv("AZURE_MOUNT_PATH"));
+        if (azureMountPath.length() == 0) {
+            return DEFAULT_AZURE_MOUNT_PATH;
+        }
+        return Paths.get(azureMountPath).normalize().toString();
+    }
+
+    private static String buildMountedPath(String azureMountPath, String relativePath) {
+        return Paths.get(azureMountPath, relativePath).normalize().toString();
     }
 
     private static void ensureDirectory(String path) {
