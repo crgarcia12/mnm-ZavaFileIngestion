@@ -1,8 +1,10 @@
 package com.zavabank.fileingestion;
 
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
+import com.azure.core.util.BinaryData;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.messaging.servicebus.ServiceBusClientBuilder;
+import com.azure.messaging.servicebus.ServiceBusMessage;
+import com.azure.messaging.servicebus.ServiceBusSenderClient;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -242,21 +244,28 @@ public class Main {
     }
 
     private static void publishIngestionEvent(Properties config, String fileName, String fileType, String status) {
-        Connection connection = null;
-        Channel channel = null;
+        ServiceBusSenderClient senderClient = null;
         try {
-            ConnectionFactory factory = new ConnectionFactory();
-            factory.setHost(config.getProperty("rabbitmq.host", "localhost"));
-            factory.setPort(parseInt(config.getProperty("rabbitmq.port", "5672"), 5672));
-            factory.setUsername(config.getProperty("rabbitmq.username", "guest"));
-            factory.setPassword(config.getProperty("rabbitmq.password", "guest"));
-            factory.setVirtualHost(config.getProperty("rabbitmq.vhost", "/"));
-            connection = factory.newConnection();
-            channel = connection.createChannel();
+            String namespace = normalizeServiceBusNamespace(config.getProperty("servicebus.namespace", ""));
+            if (namespace.isEmpty()) {
+                log("Azure Service Bus publish skipped: servicebus.namespace is not configured.");
+                return;
+            }
 
-            String exchange = config.getProperty("rabbitmq.events.exchange", "zava.events");
-            String routingKey = config.getProperty("rabbitmq.ingestion.routingKey", "file.ingested");
-            channel.exchangeDeclare(exchange, "topic", true);
+            String topicName = config.getProperty("servicebus.topic.name", "zava.events");
+            String subject = config.getProperty("servicebus.ingestion.subject", "file.ingested").trim();
+            String managedIdentityClientId = trimToEmpty(config.getProperty("servicebus.managedIdentityClientId", ""));
+            DefaultAzureCredentialBuilder credentialBuilder = new DefaultAzureCredentialBuilder();
+            if (managedIdentityClientId.length() > 0) {
+                credentialBuilder.managedIdentityClientId(managedIdentityClientId);
+            }
+
+            senderClient = new ServiceBusClientBuilder()
+                .credential(namespace, credentialBuilder.build())
+                .sender()
+                .topicName(topicName)
+                .buildClient();
+
             String payload = "{"
                 + "\"eventType\":\"file.ingestion\","
                 + "\"fileName\":\"" + escape(fileName) + "\","
@@ -264,19 +273,17 @@ public class Main {
                 + "\"status\":\"" + escape(status) + "\","
                 + "\"ingestedAt\":\"" + new Date().getTime() + "\""
                 + "}";
-            channel.basicPublish(exchange, routingKey, null, payload.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception ex) {
-            log("RabbitMQ publish failed: " + ex.getMessage());
-        } finally {
-            if (channel != null) {
-                try {
-                    channel.close();
-                } catch (Exception ignored) {
-                }
+            ServiceBusMessage message = new ServiceBusMessage(BinaryData.fromString(payload));
+            if (subject.length() > 0) {
+                message.setSubject(subject);
             }
-            if (connection != null) {
+            senderClient.sendMessage(message);
+        } catch (Exception ex) {
+            log("Azure Service Bus publish failed: " + ex.getMessage());
+        } finally {
+            if (senderClient != null) {
                 try {
-                    connection.close();
+                    senderClient.close();
                 } catch (Exception ignored) {
                 }
             }
@@ -342,11 +349,10 @@ public class Main {
                 }
             }
         }
-        applyEnvOverride(props, "RABBITMQ_HOST", "rabbitmq.host");
-        applyEnvOverride(props, "RABBITMQ_PORT", "rabbitmq.port");
-        applyEnvOverride(props, "RABBITMQ_USERNAME", "rabbitmq.username");
-        applyEnvOverride(props, "RABBITMQ_PASSWORD", "rabbitmq.password");
-        applyEnvOverride(props, "RABBITMQ_VHOST", "rabbitmq.vhost");
+        applyEnvOverride(props, "SERVICEBUS_NAMESPACE", "servicebus.namespace");
+        applyEnvOverride(props, "SERVICEBUS_TOPIC_NAME", "servicebus.topic.name");
+        applyEnvOverride(props, "SERVICEBUS_INGESTION_SUBJECT", "servicebus.ingestion.subject");
+        applyEnvOverride(props, "AZURE_CLIENT_ID", "servicebus.managedIdentityClientId");
         applyEnvOverride(props, "SQLSERVER_URL", "db.url");
         applyEnvOverride(props, "SQLSERVER_USERNAME", "db.username");
         applyEnvOverride(props, "SQLSERVER_PASSWORD", "db.password");
@@ -370,6 +376,24 @@ public class Main {
         } catch (Exception ex) {
             log("Could not create directory " + path + ": " + ex.getMessage());
         }
+    }
+
+    private static String normalizeServiceBusNamespace(String namespace) {
+        String normalized = trimToEmpty(namespace);
+        if (normalized.length() == 0) {
+            return "";
+        }
+        if (normalized.indexOf('.') < 0) {
+            return normalized + ".servicebus.windows.net";
+        }
+        return normalized;
+    }
+
+    private static String trimToEmpty(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim();
     }
 
     private static void moveFile(Path source, Path target) {

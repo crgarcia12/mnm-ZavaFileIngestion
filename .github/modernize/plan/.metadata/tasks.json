@@ -5,6 +5,7 @@
     {
       "type": "transform",
       "id": "001-transform-rabbitmq-amqp-to-servicebus",
+      "status": "completed",
       "description": "Migrate the file ingestion event publisher from RabbitMQ AMQP to Azure Service Bus.",
       "reason": "The application currently uses RabbitMQ (com.rabbitmq:amqp-client) to publish file ingestion events. Migrating to Azure Service Bus eliminates the need to operate a self-hosted broker and provides a fully managed, cloud-native messaging service.",
       "requirements": "Replace the RabbitMQ AMQP client dependency and all RabbitMQ connection/publishing code in Main.java (publishIngestionEvent method) with Azure Service Bus SDK. Migrate message publishing to Azure Service Bus topics or queues. Use Managed Identity for authentication to Azure Service Bus. Remove RabbitMQ configuration properties (rabbitmq.host, rabbitmq.port, rabbitmq.username, rabbitmq.password, rabbitmq.vhost, rabbitmq.events.exchange, rabbitmq.ingestion.routingKey) and replace with Azure Service Bus connection configuration.",
