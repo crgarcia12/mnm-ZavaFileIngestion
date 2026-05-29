@@ -1,8 +1,11 @@
 package com.zavabank.fileingestion;
 
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
+import com.azure.core.util.BinaryData;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.messaging.servicebus.ServiceBusClientBuilder;
+import com.azure.messaging.servicebus.ServiceBusMessage;
+import com.azure.messaging.servicebus.ServiceBusSenderClient;
+import com.microsoft.sqlserver.jdbc.SQLServerDataSource;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -15,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.util.Date;
 import java.util.HashMap;
@@ -23,6 +25,8 @@ import java.util.Map;
 import java.util.Properties;
 
 public class Main {
+    private static final String DEFAULT_AZURE_MOUNT_PATH = "/mnt/azure";
+    private static final String DEFAULT_INGESTION_PATH = "file-ingestion";
     private static volatile boolean running = true;
     private static final Map<String, String> FILE_TYPE_HINTS = new HashMap<String, String>();
 
@@ -41,9 +45,9 @@ public class Main {
             }
         }));
 
-        String watchPath = config.getProperty("ingestion.watch.path", "/shared/file-ingestion");
-        String processedPath = config.getProperty("ingestion.processed.path", "/shared/file-ingestion/processed");
-        String errorPath = config.getProperty("ingestion.error.path", "/shared/file-ingestion/error");
+        String watchPath = config.getProperty("ingestion.watch.path", buildMountedPath(getAzureMountPath(), DEFAULT_INGESTION_PATH));
+        String processedPath = config.getProperty("ingestion.processed.path", buildMountedPath(getAzureMountPath(), DEFAULT_INGESTION_PATH + "/processed"));
+        String errorPath = config.getProperty("ingestion.error.path", buildMountedPath(getAzureMountPath(), DEFAULT_INGESTION_PATH + "/error"));
         long intervalMs = parseLong(config.getProperty("ingestion.poll.interval.ms", "5000"), 5000L);
 
         ensureDirectory(watchPath);
@@ -211,10 +215,9 @@ public class Main {
         java.sql.Connection conn = null;
         PreparedStatement ps = null;
         try {
-            conn = DriverManager.getConnection(
-                config.getProperty("db.url"),
-                config.getProperty("db.username"),
-                config.getProperty("db.password"));
+            SQLServerDataSource dataSource = new SQLServerDataSource();
+            dataSource.setURL(buildAzureSqlManagedIdentityUrl(config));
+            conn = dataSource.getConnection();
             ps = conn.prepareStatement(sql);
             int i;
             for (i = 0; i < values.length; i++) {
@@ -241,22 +244,77 @@ public class Main {
         }
     }
 
-    private static void publishIngestionEvent(Properties config, String fileName, String fileType, String status) {
-        Connection connection = null;
-        Channel channel = null;
-        try {
-            ConnectionFactory factory = new ConnectionFactory();
-            factory.setHost(config.getProperty("rabbitmq.host", "localhost"));
-            factory.setPort(parseInt(config.getProperty("rabbitmq.port", "5672"), 5672));
-            factory.setUsername(config.getProperty("rabbitmq.username", "guest"));
-            factory.setPassword(config.getProperty("rabbitmq.password", "guest"));
-            factory.setVirtualHost(config.getProperty("rabbitmq.vhost", "/"));
-            connection = factory.newConnection();
-            channel = connection.createChannel();
+    private static String buildAzureSqlManagedIdentityUrl(Properties config) {
+        String url = stripJdbcCredentialSegments(trimToEmpty(config.getProperty("db.url", "")));
+        String lowerUrl = url.toLowerCase();
+        if (lowerUrl.indexOf("authentication=activedirectorymsi") < 0) {
+            url = appendJdbcProperty(url, "authentication=ActiveDirectoryMSI");
+            lowerUrl = url.toLowerCase();
+        }
+        String managedIdentityClientId = trimToEmpty(config.getProperty("azure.client.id", ""));
+        if (managedIdentityClientId.length() > 0 && lowerUrl.indexOf("msiclientid=") < 0) {
+            url = appendJdbcProperty(url, "msiClientId=" + managedIdentityClientId);
+        }
+        return url;
+    }
 
-            String exchange = config.getProperty("rabbitmq.events.exchange", "zava.events");
-            String routingKey = config.getProperty("rabbitmq.ingestion.routingKey", "file.ingested");
-            channel.exchangeDeclare(exchange, "topic", true);
+    private static String stripJdbcCredentialSegments(String url) {
+        String[] segments = url.split(";");
+        StringBuilder sanitized = new StringBuilder();
+        int i;
+        for (i = 0; i < segments.length; i++) {
+            String segment = trimToEmpty(segments[i]);
+            String lowerSegment = segment.toLowerCase();
+            if (segment.length() == 0
+                || lowerSegment.startsWith("user=")
+                || lowerSegment.startsWith("username=")
+                || lowerSegment.startsWith("uid=")
+                || lowerSegment.startsWith("password=")
+                || lowerSegment.startsWith("pwd=")) {
+                continue;
+            }
+            if (sanitized.length() > 0) {
+                sanitized.append(";");
+            }
+            sanitized.append(segment);
+        }
+        return sanitized.toString();
+    }
+
+    private static String appendJdbcProperty(String url, String property) {
+        if (url.length() == 0) {
+            return property;
+        }
+        if (url.endsWith(";")) {
+            return url + property;
+        }
+        return url + ";" + property;
+    }
+
+    private static void publishIngestionEvent(Properties config, String fileName, String fileType, String status) {
+
+        ServiceBusSenderClient senderClient = null;
+        try {
+            String namespace = normalizeServiceBusNamespace(config.getProperty("servicebus.namespace", ""));
+            if (namespace.isEmpty()) {
+                log("Azure Service Bus publish skipped: servicebus.namespace is not configured.");
+                return;
+            }
+
+            String topicName = config.getProperty("servicebus.topic.name", "zava.events");
+            String subject = config.getProperty("servicebus.ingestion.subject", "file.ingested").trim();
+            String managedIdentityClientId = trimToEmpty(config.getProperty("servicebus.managedIdentityClientId", ""));
+            DefaultAzureCredentialBuilder credentialBuilder = new DefaultAzureCredentialBuilder();
+            if (managedIdentityClientId.length() > 0) {
+                credentialBuilder.managedIdentityClientId(managedIdentityClientId);
+            }
+
+            senderClient = new ServiceBusClientBuilder()
+                .credential(namespace, credentialBuilder.build())
+                .sender()
+                .topicName(topicName)
+                .buildClient();
+
             String payload = "{"
                 + "\"eventType\":\"file.ingestion\","
                 + "\"fileName\":\"" + escape(fileName) + "\","
@@ -264,19 +322,17 @@ public class Main {
                 + "\"status\":\"" + escape(status) + "\","
                 + "\"ingestedAt\":\"" + new Date().getTime() + "\""
                 + "}";
-            channel.basicPublish(exchange, routingKey, null, payload.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception ex) {
-            log("RabbitMQ publish failed: " + ex.getMessage());
-        } finally {
-            if (channel != null) {
-                try {
-                    channel.close();
-                } catch (Exception ignored) {
-                }
+            ServiceBusMessage message = new ServiceBusMessage(BinaryData.fromString(payload));
+            if (subject.length() > 0) {
+                message.setSubject(subject);
             }
-            if (connection != null) {
+            senderClient.sendMessage(message);
+        } catch (Exception ex) {
+            log("Azure Service Bus publish failed: " + ex.getMessage());
+        } finally {
+            if (senderClient != null) {
                 try {
-                    connection.close();
+                    senderClient.close();
                 } catch (Exception ignored) {
                 }
             }
@@ -342,18 +398,17 @@ public class Main {
                 }
             }
         }
-        applyEnvOverride(props, "RABBITMQ_HOST", "rabbitmq.host");
-        applyEnvOverride(props, "RABBITMQ_PORT", "rabbitmq.port");
-        applyEnvOverride(props, "RABBITMQ_USERNAME", "rabbitmq.username");
-        applyEnvOverride(props, "RABBITMQ_PASSWORD", "rabbitmq.password");
-        applyEnvOverride(props, "RABBITMQ_VHOST", "rabbitmq.vhost");
+        applyEnvOverride(props, "SERVICEBUS_NAMESPACE", "servicebus.namespace");
+        applyEnvOverride(props, "SERVICEBUS_TOPIC_NAME", "servicebus.topic.name");
+        applyEnvOverride(props, "SERVICEBUS_INGESTION_SUBJECT", "servicebus.ingestion.subject");
+        applyEnvOverride(props, "AZURE_CLIENT_ID", "servicebus.managedIdentityClientId");
+        applyEnvOverride(props, "AZURE_CLIENT_ID", "azure.client.id");
         applyEnvOverride(props, "SQLSERVER_URL", "db.url");
-        applyEnvOverride(props, "SQLSERVER_USERNAME", "db.username");
-        applyEnvOverride(props, "SQLSERVER_PASSWORD", "db.password");
         applyEnvOverride(props, "FILE_INGESTION_PATH", "ingestion.watch.path");
         applyEnvOverride(props, "FILE_INGESTION_PROCESSED_PATH", "ingestion.processed.path");
         applyEnvOverride(props, "FILE_INGESTION_ERROR_PATH", "ingestion.error.path");
         applyEnvOverride(props, "FILE_INGESTION_POLL_MS", "ingestion.poll.interval.ms");
+        normalizeIngestionPaths(props);
         return props;
     }
 
@@ -364,12 +419,67 @@ public class Main {
         }
     }
 
+    private static void normalizeIngestionPaths(Properties props) {
+        String azureMountPath = getAzureMountPath();
+        props.setProperty("ingestion.watch.path", resolveMountedPath(props.getProperty("ingestion.watch.path"), azureMountPath, DEFAULT_INGESTION_PATH));
+        props.setProperty("ingestion.processed.path", resolveMountedPath(props.getProperty("ingestion.processed.path"), azureMountPath, DEFAULT_INGESTION_PATH + "/processed"));
+        props.setProperty("ingestion.error.path", resolveMountedPath(props.getProperty("ingestion.error.path"), azureMountPath, DEFAULT_INGESTION_PATH + "/error"));
+    }
+
+    private static String resolveMountedPath(String configuredPath, String azureMountPath, String defaultRelativePath) {
+        String resolvedPath = resolveAzureMountPathPlaceholders(trimToEmpty(configuredPath), azureMountPath);
+        if (resolvedPath.length() == 0) {
+            return buildMountedPath(azureMountPath, defaultRelativePath);
+        }
+        Path path = Paths.get(resolvedPath);
+        if (!path.isAbsolute()) {
+            return buildMountedPath(azureMountPath, resolvedPath);
+        }
+        return path.normalize().toString();
+    }
+
+    private static String resolveAzureMountPathPlaceholders(String value, String azureMountPath) {
+        return value
+            .replace("${AZURE_MOUNT_PATH:/mnt/azure}", azureMountPath)
+            .replace("${AZURE_MOUNT_PATH}", azureMountPath);
+    }
+
+    private static String getAzureMountPath() {
+        String azureMountPath = trimToEmpty(System.getenv("AZURE_MOUNT_PATH"));
+        if (azureMountPath.length() == 0) {
+            return DEFAULT_AZURE_MOUNT_PATH;
+        }
+        return Paths.get(azureMountPath).normalize().toString();
+    }
+
+    private static String buildMountedPath(String azureMountPath, String relativePath) {
+        return Paths.get(azureMountPath, relativePath).normalize().toString();
+    }
+
     private static void ensureDirectory(String path) {
         try {
             Files.createDirectories(Paths.get(path));
         } catch (Exception ex) {
             log("Could not create directory " + path + ": " + ex.getMessage());
         }
+    }
+
+    private static String normalizeServiceBusNamespace(String namespace) {
+        String normalized = trimToEmpty(namespace);
+        if (normalized.length() == 0) {
+            return "";
+        }
+        if (normalized.indexOf('.') < 0) {
+            return normalized + ".servicebus.windows.net";
+        }
+        return normalized;
+    }
+
+    private static String trimToEmpty(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim();
     }
 
     private static void moveFile(Path source, Path target) {

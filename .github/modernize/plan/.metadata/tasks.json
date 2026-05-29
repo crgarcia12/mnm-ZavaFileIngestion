@@ -5,6 +5,13 @@
     {
       "type": "transform",
       "id": "001-transform-rabbitmq-amqp-to-servicebus",
+      "status": "success",
+      "taskSummary": "Migrated Main.java publishing from RabbitMQ AMQP to Azure Service Bus using DefaultAzureCredentialBuilder and ServiceBusSenderClient. Replaced amqp-client dependency with Azure SDK. Updated configuration properties. Build and tests pass.",
+      "successCriteriaStatus": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      },
       "description": "Migrate the file ingestion event publisher from RabbitMQ AMQP to Azure Service Bus.",
       "reason": "The application currently uses RabbitMQ (com.rabbitmq:amqp-client) to publish file ingestion events. Migrating to Azure Service Bus eliminates the need to operate a self-hosted broker and provides a fully managed, cloud-native messaging service.",
       "requirements": "Replace the RabbitMQ AMQP client dependency and all RabbitMQ connection/publishing code in Main.java (publishIngestionEvent method) with Azure Service Bus SDK. Migrate message publishing to Azure Service Bus topics or queues. Use Managed Identity for authentication to Azure Service Bus. Remove RabbitMQ configuration properties (rabbitmq.host, rabbitmq.port, rabbitmq.username, rabbitmq.password, rabbitmq.vhost, rabbitmq.events.exchange, rabbitmq.ingestion.routingKey) and replace with Azure Service Bus connection configuration.",
@@ -23,6 +30,13 @@
     {
       "type": "transform",
       "id": "002-transform-sql-server-to-azure-sql-mi",
+      "status": "success",
+      "taskSummary": "Migrated executeInsert from password-based DriverManager connections to Azure SQL Managed Identity via SQLServerDataSource. Removed db.username/db.password properties, added azure.client.id support, updated the JDBC URL for ActiveDirectoryMSI, and upgraded mssql-jdbc. Build and tests pass.",
+      "successCriteriaStatus": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      },
       "description": "Migrate the SQL Server database connection from password-based authentication to Azure Managed Identity.",
       "reason": "The application currently uses hardcoded username/password credentials (db.username, db.password) to connect to SQL Server via JDBC. Migrating to Azure Managed Identity eliminates plaintext credentials and enforces secure, auditable database access.",
       "requirements": "Replace password-based JDBC authentication in the executeInsert method with Azure Managed Identity (passwordless) authentication for Azure SQL Database. Remove db.username and db.password configuration properties. Update the mssql-jdbc dependency and connection configuration to support Azure Active Directory Managed Identity authentication. The three staging tables (StagingCheckImage, StagingWireConfirmation, StagingRegulatoryFeed) and their INSERT statements must remain functionally equivalent.",
@@ -42,6 +56,13 @@
     {
       "type": "transform",
       "id": "003-transform-local-files-to-azure-storage",
+      "status": "success",
+      "taskSummary": "Updated ingestion watch, processed, and error paths to resolve under the Azure mount path (${AZURE_MOUNT_PATH:/mnt/azure}) with env override support preserved. Added runtime path normalization so configured relative and placeholder-based paths continue to work with existing file operations. Build and tests pass.",
+      "successCriteriaStatus": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      },
       "description": "Migrate the local file ingestion watch path to an Azure-mounted storage path.",
       "reason": "The application currently polls a local shared directory (/shared/file-ingestion) for incoming files. Moving to Azure-mounted storage provides durable, scalable file drop capability without managing local persistent volumes.",
       "requirements": "Update the file ingestion watch path, processed path, and error path to use Azure mounted storage paths starting with ${AZURE_MOUNT_PATH:/mnt/azure}. Update configuration properties (ingestion.watch.path, ingestion.processed.path, ingestion.error.path) and their environment variable overrides (FILE_INGESTION_PATH, FILE_INGESTION_PROCESSED_PATH, FILE_INGESTION_ERROR_PATH) to use the Azure mount path prefix. All file operations (listFiles, move, createDirectories) must continue to work correctly against the mounted Azure Storage path.",
@@ -55,6 +76,14 @@
     {
       "type": "security",
       "id": "004-security-cve-remediation",
+      "status": "success",
+      "taskSummary": "Scanned 62 dependencies. Found 23 CVEs in Netty, mssql-jdbc, and msal4j. Fixed by upgrading mssql-jdbc to 12.8.2.jre8 and forcing Netty 4.1.133.Final and msal4j 1.15.1 via Gradle resolutionStrategy. Build passes.",
+      "successCriteriaStatus": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      },
+      "cveReport": ".github/modernize/plan/004-security-cve-remediation/final-cve-report.json",
       "description": "Scan all Gradle dependencies for known CVEs and remediate identified vulnerabilities.",
       "reason": "Before deploying to Azure, all known security vulnerabilities in project dependencies must be identified and resolved to ensure the application is secure.",
       "requirements": "Upgrade vulnerable dependencies to the minimum patched version. If a CVE fix requires a major version upgrade, document the affected dependency, the current version, the upgraded major version, and the breaking change risk. Verify that the project builds and all tests pass after remediation.",
@@ -74,6 +103,7 @@
     {
       "type": "deployment",
       "id": "005-deployment-azure-container-apps",
+      "status": "started",
       "description": "Containerize and deploy the ZavaFileIngestion service to Azure Container Apps.",
       "reason": "The application needs to be packaged as a container and deployed to Azure Container Apps to run as a managed, scalable cloud service. The existing Dockerfile will be used as the basis for the container image.",
       "requirements": "Build the container image using the existing Dockerfile (FROM gradle:7.6-jdk8 build stage, eclipse-temurin:8-jre runtime). Push the image to Azure Container Registry. Deploy to Azure Container Apps. Configure the Azure mount path for the file ingestion storage (AZURE_MOUNT_PATH environment variable pointing to the Azure Files mount). Create a new Azure Container Apps resource if one does not already exist.",
