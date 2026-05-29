@@ -24,6 +24,13 @@
     {
       "type": "transform",
       "id": "002-transform-sql-server-to-azure-sql-mi",
+      "status": "success",
+      "taskSummary": "Migrated executeInsert from password-based DriverManager connections to Azure SQL Managed Identity via SQLServerDataSource. Removed db.username/db.password properties, added azure.client.id support, updated the JDBC URL for ActiveDirectoryMSI, and upgraded mssql-jdbc. Build and tests pass.",
+      "successCriteriaStatus": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      },
       "description": "Migrate the SQL Server database connection from password-based authentication to Azure Managed Identity.",
       "reason": "The application currently uses hardcoded username/password credentials (db.username, db.password) to connect to SQL Server via JDBC. Migrating to Azure Managed Identity eliminates plaintext credentials and enforces secure, auditable database access.",
       "requirements": "Replace password-based JDBC authentication in the executeInsert method with Azure Managed Identity (passwordless) authentication for Azure SQL Database. Remove db.username and db.password configuration properties. Update the mssql-jdbc dependency and connection configuration to support Azure Active Directory Managed Identity authentication. The three staging tables (StagingCheckImage, StagingWireConfirmation, StagingRegulatoryFeed) and their INSERT statements must remain functionally equivalent.",

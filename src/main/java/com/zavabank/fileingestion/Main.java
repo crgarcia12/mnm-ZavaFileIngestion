@@ -5,6 +5,7 @@ import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusMessage;
 import com.azure.messaging.servicebus.ServiceBusSenderClient;
+import com.microsoft.sqlserver.jdbc.SQLServerDataSource;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -17,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.util.Date;
 import java.util.HashMap;
@@ -213,10 +213,9 @@ public class Main {
         java.sql.Connection conn = null;
         PreparedStatement ps = null;
         try {
-            conn = DriverManager.getConnection(
-                config.getProperty("db.url"),
-                config.getProperty("db.username"),
-                config.getProperty("db.password"));
+            SQLServerDataSource dataSource = new SQLServerDataSource();
+            dataSource.setURL(buildAzureSqlManagedIdentityUrl(config));
+            conn = dataSource.getConnection();
             ps = conn.prepareStatement(sql);
             int i;
             for (i = 0; i < values.length; i++) {
@@ -243,7 +242,55 @@ public class Main {
         }
     }
 
+    private static String buildAzureSqlManagedIdentityUrl(Properties config) {
+        String url = stripJdbcCredentialSegments(trimToEmpty(config.getProperty("db.url", "")));
+        String lowerUrl = url.toLowerCase();
+        if (lowerUrl.indexOf("authentication=activedirectorymsi") < 0) {
+            url = appendJdbcProperty(url, "authentication=ActiveDirectoryMSI");
+            lowerUrl = url.toLowerCase();
+        }
+        String managedIdentityClientId = trimToEmpty(config.getProperty("azure.client.id", ""));
+        if (managedIdentityClientId.length() > 0 && lowerUrl.indexOf("msiclientid=") < 0) {
+            url = appendJdbcProperty(url, "msiClientId=" + managedIdentityClientId);
+        }
+        return url;
+    }
+
+    private static String stripJdbcCredentialSegments(String url) {
+        String[] segments = url.split(";");
+        StringBuilder sanitized = new StringBuilder();
+        int i;
+        for (i = 0; i < segments.length; i++) {
+            String segment = trimToEmpty(segments[i]);
+            String lowerSegment = segment.toLowerCase();
+            if (segment.length() == 0
+                || lowerSegment.startsWith("user=")
+                || lowerSegment.startsWith("username=")
+                || lowerSegment.startsWith("uid=")
+                || lowerSegment.startsWith("password=")
+                || lowerSegment.startsWith("pwd=")) {
+                continue;
+            }
+            if (sanitized.length() > 0) {
+                sanitized.append(";");
+            }
+            sanitized.append(segment);
+        }
+        return sanitized.toString();
+    }
+
+    private static String appendJdbcProperty(String url, String property) {
+        if (url.length() == 0) {
+            return property;
+        }
+        if (url.endsWith(";")) {
+            return url + property;
+        }
+        return url + ";" + property;
+    }
+
     private static void publishIngestionEvent(Properties config, String fileName, String fileType, String status) {
+
         ServiceBusSenderClient senderClient = null;
         try {
             String namespace = normalizeServiceBusNamespace(config.getProperty("servicebus.namespace", ""));
@@ -353,9 +400,8 @@ public class Main {
         applyEnvOverride(props, "SERVICEBUS_TOPIC_NAME", "servicebus.topic.name");
         applyEnvOverride(props, "SERVICEBUS_INGESTION_SUBJECT", "servicebus.ingestion.subject");
         applyEnvOverride(props, "AZURE_CLIENT_ID", "servicebus.managedIdentityClientId");
+        applyEnvOverride(props, "AZURE_CLIENT_ID", "azure.client.id");
         applyEnvOverride(props, "SQLSERVER_URL", "db.url");
-        applyEnvOverride(props, "SQLSERVER_USERNAME", "db.username");
-        applyEnvOverride(props, "SQLSERVER_PASSWORD", "db.password");
         applyEnvOverride(props, "FILE_INGESTION_PATH", "ingestion.watch.path");
         applyEnvOverride(props, "FILE_INGESTION_PROCESSED_PATH", "ingestion.processed.path");
         applyEnvOverride(props, "FILE_INGESTION_ERROR_PATH", "ingestion.error.path");
