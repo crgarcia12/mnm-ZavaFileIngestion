@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tasks template for modernization plan. Generate this file alongside plan.md to track individual migration tasks.",
+  "tasks": [
+    {
+      "type": "transform",
+      "id": "001-transform-rabbitmq-to-servicebus",
+      "description": "Migrate RabbitMQ AMQP event publishing to Azure Service Bus",
+      "reason": "The application uses the RabbitMQ AMQP client to publish file ingestion events to a topic exchange. Migrating to Azure Service Bus eliminates the on-premises RabbitMQ broker dependency and provides a fully managed, scalable messaging service on Azure.",
+      "requirements": "Replace the RabbitMQ AMQP client dependency (com.rabbitmq:amqp-client) with the Azure Service Bus SDK. Migrate the publishIngestionEvent method from using ConnectionFactory, Connection, and Channel to using the Azure Service Bus sender API. Map the RabbitMQ topic exchange (zava.events) and routing key (file.ingested) to an Azure Service Bus topic and subscription. Use Managed Identity for authentication instead of username/password credentials. Addresses assessment issues: CWE-259 (Use of Hard-coded Password), CWE-798 (Use of Hard-coded Credentials).",
+      "skills": [
+        {
+          "name": "migration-java-ee-amqp-rabbitmq-servicebus",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "002-transform-sql-server-to-managed-identity",
+      "description": "Migrate SQL Server database authentication from password-based to Azure Managed Identity",
+      "reason": "The application currently connects to SQL Server using a hardcoded SA username and password in the properties file. Switching to Managed Identity removes the need for any stored database credentials, improving security posture and eliminating credential rotation overhead.",
+      "requirements": "Update the JDBC connection in the executeInsert method to use Azure Managed Identity instead of username/password from configuration properties (db.username, db.password). Remove password-based datasource configuration and replace with a token-based or managed identity-enabled connection. Ensure all three insert operations (check image metadata, wire confirmations, regulatory feeds) continue to function correctly. Addresses assessment issues: CVE-2025-59250 (JDBC Driver for SQL Server improper input validation — upgrade driver as part of this task), CWE-259 (Use of Hard-coded Password), CWE-798 (Use of Hard-coded Credentials).",
+      "dependencies": [
+        "001-transform-rabbitmq-to-servicebus"
+      ],
+      "skills": [
+        {
+          "name": "migration-mi-azure-sql",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "003-transform-credentials-to-keyvault",
+      "description": "Migrate remaining plaintext credentials from properties file to Azure Key Vault",
+      "reason": "The fileingestion.properties file contains hardcoded passwords and credentials committed to source control (RabbitMQ password, SQL Server password, connection strings). These must be removed from the codebase and stored securely in Azure Key Vault to address the identified security findings.",
+      "requirements": "Replace hardcoded credential values in fileingestion.properties and Main.java with Azure Key Vault secret retrieval. Remove db.password, db.username, rabbitmq.password, and rabbitmq.username from the properties file. Retrieve any remaining secrets that cannot be covered by Managed Identity (such as connection endpoints or non-MI-capable configurations) from Azure Key Vault at application startup. Use Managed Identity for Key Vault access. Addresses assessment issues: CWE-259 (Use of Hard-coded Password), CWE-798 (Use of Hard-coded Credentials).",
+      "dependencies": [
+        "001-transform-rabbitmq-to-servicebus",
+        "002-transform-sql-server-to-managed-identity"
+      ],
+      "skills": [
+        {
+          "name": "migration-plaintext-credential-to-azure-keyvault",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "004-transform-local-files-to-azure-storage",
+      "description": "Migrate local file system paths to mounted Azure Blob Storage paths",
+      "reason": "The application watches a local directory (/shared/file-ingestion) and moves processed files to subdirectories. When deployed to Azure Container Apps, local shared paths are not available. Switching to mounted Azure Blob Storage paths enables cloud-native file ingestion with durable, scalable storage.",
+      "requirements": "Update the application to use mounted Azure Blob Storage paths instead of local file system paths. Configure the watch path, processed path, and error path to resolve from the AZURE_MOUNT_PATH environment variable (defaulting to /mnt/azure). Ensure file discovery, reading, moving to processed/error directories, and cleanup all operate on the mounted Azure Storage paths. No SDK changes are required — only path configuration updates to use the mounted Azure Storage volume.",
+      "dependencies": [
+        "001-transform-rabbitmq-to-servicebus",
+        "002-transform-sql-server-to-managed-identity",
+        "003-transform-credentials-to-keyvault"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "security",
+      "id": "005-security-cve-remediation",
+      "description": "Scan and remediate CVEs and security vulnerabilities in project dependencies",
+      "reason": "The assessment report identifies CVE-2025-59250 (CVSS 8.1 HIGH) in the mssql-jdbc driver as a mandatory blocker. Additional security findings include insufficient logging (CWE-778) and hardcoded credentials (partially addressed by transform tasks). All CVEs must be remediated before deployment.",
+      "requirements": "Upgrade com.microsoft.sqlserver:mssql-jdbc from 12.6.1.jre8 to 12.6.5.jre8 or later to fix CVE-2025-59250 (improper input validation allowing spoofing over a network). Scan all remaining project dependencies for additional CVEs and upgrade vulnerable dependencies to the minimum patched version. Improve logging context for security-critical failures in executeInsert and publishIngestionEvent to address CWE-778 (Insufficient Logging) — include file name and operation type in error log messages. Verify the project builds and all tests pass after remediation.",
+      "dependencies": [
+        "001-transform-rabbitmq-to-servicebus",
+        "002-transform-sql-server-to-managed-identity",
+        "003-transform-credentials-to-keyvault",
+        "004-transform-local-files-to-azure-storage"
+      ],
+      "skills": [
+        {
+          "name": "validate-cves-and-fix",
+          "location": "builtin"
+        }
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "deployment",
+      "id": "006-deployment-azure-container-apps",
+      "description": "Containerize and deploy ZavaFileIngestion to Azure Container Apps",
+      "reason": "The application requires a containerized deployment to Azure Container Apps to run in the cloud alongside the Azure services it depends on (Service Bus, SQL Database, Key Vault, Blob Storage). An existing Dockerfile is already present in the repository.",
+      "requirements": "Deploy the ZavaFileIngestion application to Azure Container Apps using the existing Dockerfile. Configure environment variables for AZURE_MOUNT_PATH and any remaining non-secret configuration values. Mount the Azure Blob Storage volume for file ingestion paths. Enable Managed Identity on the Container App for accessing Azure Service Bus, Azure SQL Database, Azure Key Vault, and Azure Blob Storage. Provision new Azure resources.",
+      "dependencies": [
+        "005-security-cve-remediation"
+      ],
+      "targetAzureService": "Azure Container Apps",
+      "resourceStatus": "Create new",
+      "deploymentTool": "bicep",
+      "skills": [
+        {
+          "name": "azcli-containerapp-deploy",
+          "location": "builtin"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "planName": "modernization-plan",
+    "projectName": "ZavaFileIngestion",
+    "language": "java",
+    "createdAt": "2026-05-29T00:38:00.000Z",
+    "version": "1.0"
+  }
+}
